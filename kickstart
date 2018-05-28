@@ -1,0 +1,202 @@
+#! /bin/sh
+# @(#) $Tau: kickstart/kickstart $
+
+## ------------------------------------------------------------------------- ##
+##                          T A U    P R O J E C T                           ##
+## ------------------------------------------------------------------------- ##
+##                                                                           ##
+##  Licensed under the Apache License, Version 2.0 (the "License");          ##
+##  you may not use this file except in compliance with the License.         ##
+##                                                                           ##
+##  You may obtain a copy of the License at:                                 ##
+##                                                                           ##
+##      http://www.apache.org/licenses/LICENSE-2.0                           ##
+##                                                                           ##
+##  Unless required by applicable law or agreed to in writing, software      ##
+##  distributed under the License is distributed on an "AS-IS" BASIS,        ##
+##  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. ##
+##  See the License for the specific language governing permissions and      ##
+##  limitations under the License.                                           ##
+##                                                                           ##
+## ------------------------------------------------------------------------- ##
+
+## ------------------------------------------------------------------------- ##
+## This script requires elevated privileges to operate properly.
+##
+## Currently, the script does not re-execute itself via sudo or su.
+## ------------------------------------------------------------------------- ##
+
+require_root() {
+	if test $(id -u) -ne 0 ;  then
+
+		# If not, determine the full path to this script
+		# ...and re-execute with sudo
+		
+		printf "%s: must be run as root\n" "$0" >&2
+		exit 100
+
+	fi
+}
+
+## ------------------------------------------------------------------------- ##
+## Determine the system type
+## ------------------------------------------------------------------------- ##
+
+check_system() {
+	printf "checking system type... "
+	ostype=$(uname -s | tr A-Z a-z)
+	subtype=''
+	cpu=$(uname -p)
+	test x"$cpu" = x"unknown" && cpu=$(uname -m)
+	case "$ostype" in
+		linux)
+			test -r /etc/debian_version && subtype="debian"
+			;;
+		darwin)
+			case "$(sw_vers -productName 2>/dev/null)" in
+				Mac*)
+					subtype="macos"
+					;;
+			esac
+			;;
+	esac
+	if test  x"$subtype" = x"" ; then
+		printf "%s-%s\n" "${cpu}" "${ostype}"
+	else
+		printf "%s-%s-%s\n" "${cpu}" "${ostype}" "${subtype}"
+	fi
+}
+
+## ------------------------------------------------------------------------- ##
+## Determine if required packages are already installed
+## ------------------------------------------------------------------------- ##
+
+check_requirements()
+{
+	need_bootstrap=yes
+}
+
+## ------------------------------------------------------------------------- ##
+## Determine the packaging system type (APT, Yum, macOS, etc.)
+## ------------------------------------------------------------------------- ##
+
+check_packagetype() {
+	printf "checking packaging system type... "
+	case "$ostype-$subtype" in
+		linux-debian) pkgtype="APT" ;;
+		darwin-macos) pkgtype="macOS" ;;
+		*) pkgtype="unknown" ;;
+	esac
+	printf "%s\n" "$pkgtype"
+	pkgtype=$(echo $pkgtype | tr A-Z a-z)
+}
+
+## ------------------------------------------------------------------------- ##
+## Install Bootstrap packages on  APT-based systems
+## ------------------------------------------------------------------------- ##
+
+bootstrap_apt()
+{
+	printf "installing bootstrap packages via APT...\n"
+	DEBIAN_FRONTEND=noninteractive
+	export DEBIAN_FRONTEND
+	apt-get update -qq -y
+	apt-get install -qq -y git curl ca-certificates puppet
+}
+
+## ------------------------------------------------------------------------- ##
+## Determine and create the installation prefix
+## ------------------------------------------------------------------------- ##
+
+create_prefix()
+{
+	printf "creating installation prefix... "
+	prefix=/opt/tau
+	mkdir -p ${prefix} || exit
+	printf "%s\n" "${prefix}"
+}
+
+## ------------------------------------------------------------------------- ##
+## Kickstart a system
+##
+## This is the main sequence of the script.
+## ------------------------------------------------------------------------- ##
+
+## Perform system checks
+
+require_root
+check_system
+check_requirements
+
+if test $need_bootstrap = yes ; then
+	check_packagetype
+
+	## Install bootstrap packages
+
+	case $pkgtype in
+		apt)
+			bootstrap_apt
+			;;
+	esac
+fi
+
+## Fetch/parse Kickstart configuration
+
+## Configure additional source repositories
+
+## Install any additional packages
+
+## Create the installation prefix
+
+create_prefix
+
+## Clone the Puppet tree into ${prefix}/puppet
+## N.B. In future this may be installed via package instead to ease updates.
+
+mkdir -p ${prefix}/puppet
+cd ${prefix}/puppet
+printf "fetching Puppet manifests...\n"
+if test -d modules ; then
+	cd modules
+	git pull --quiet || exit
+	cd ..
+else
+	git clone --quiet -b shimmer/master git://github.com/tauproject/puppet-modules.git modules
+fi
+if test -d manifests ; then
+	cd manifests
+	git pull --quiet || exit
+	cd ..
+else
+	git clone --quiet -b shimmer/master git://github.com/tauproject/puppet-manifests.git manifests
+fi
+if test -d data ; then
+	cd data
+	git pull --quiet || exit
+	cd ..
+else
+	git clone --quiet -b shimmer/master git://github.com/tauproject/puppet-data.git data
+fi
+cd modules
+git submodule update --init --recursive
+
+## Obtain puppet configuration path
+
+printf "checking Puppet configuration path... "
+puppet_confdir=$(puppet config print confdir)
+printf "%s\n" "${puppet_confdir}"
+
+## Create hiera.yaml
+
+## Apply local customisations to ${prefix}/puppet/data
+
+printf "applying Hiera customisations...\n"
+
+## Add a cron job for puppet tree updates and application
+
+printf "installing Puppet cron job...\n"
+
+## Perform a one-off apply now
+
+printf "applying Puppet manifests...\n"
+puppet apply --modulepath $prefix/puppet/modules $prefix/puppet/manifests/site.pp
