@@ -40,7 +40,7 @@ SHA512(kickstart)= efc05bf74d344f53f5128e1fcdb9ad788e306729526137c721c1f574ec064
 
 Copyright © 2018.
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+Licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) (the "License"); you may not use
 this file except in compliance with the License.
 
 You may obtain a copy of the License at:
