@@ -54,4 +54,4 @@ specific language governing permissions and limitations under the License.
 
 
 
-@(#) $Tau: kickstart/README.md $
+```@(#) $Tau: kickstart/README.md $```
